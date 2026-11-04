@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package flights;
+
+import "google/protobuf/timestamp.proto";
+
+// Every RPC requires x-api-key metadata; missing/invalid key: UNAUTHENTICATED.
+service FlightService {
+    // INVALID_ARGUMENT: invalid IATA codes or date (YYYY-MM-DD).
+    rpc SearchFlights(SearchFlightsRequest)
+        returns (SearchFlightsResponse);
+
+    // INVALID_ARGUMENT: nonpositive ID. NOT_FOUND: flight does not exist.
+    rpc GetFlight(GetFlightRequest)
+        returns (GetFlightResponse);
+
+    // INVALID_ARGUMENT: invalid UUID, ID or count. NOT_FOUND: unknown flight.
+    // RESOURCE_EXHAUSTED: insufficient seats. ALREADY_EXISTS: UUID has different parameters.
+    // FAILED_PRECONDITION: flight not scheduled or reservation already released/cancelled.
+    // Identical active requests are idempotent.
+    rpc ReserveSeats(ReserveSeatsRequest)
+        returns (ReserveSeatsResponse);
+
+    // INVALID_ARGUMENT: invalid UUID. FAILED_PRECONDITION: expired reservation.
+    // Idempotent: also succeeds for an unknown UUID, marking it as cancelled.
+    // A late ReserveSeats with this UUID is rejected.
+    rpc ReleaseReservation(ReleaseReservationRequest)
+        returns (ReleaseReservationResponse);
+}
+
+enum FlightStatus {
+    FLIGHT_STATUS_UNSPECIFIED = 0;
+    SCHEDULED = 1;
+    DEPARTED = 2;
+    CANCELLED = 3;
+    COMPLETED = 4;
+}
+
+enum ReservationStatus {
+    RESERVATION_STATUS_UNSPECIFIED = 0;
+    ACTIVE = 1;
+    RELEASED = 2;
+    EXPIRED = 3;
+}
+
+message Flight {
+    int64 id = 1;
+    string flight_number = 2;
+    string airline = 3;
+    string origin = 4;
+    string destination = 5;
+
+    string departure_date = 6;
+    google.protobuf.Timestamp departure_at = 7;
+    google.protobuf.Timestamp arrival_at = 8;
+
+    int32 total_seats = 9;
+    int32 available_seats = 10;
+
+    string price = 11;
+    FlightStatus status = 12;
+}
+
+message SearchFlightsRequest {
+    string origin = 1;
+    string destination = 2;
+    // Calendar date, YYYY-MM-DD; absence means any date. Instants use Timestamp.
+    optional string date = 3;
+}
+
+message SearchFlightsResponse {
+    repeated Flight flights = 1;
+}
+
+message GetFlightRequest {
+    int64 flight_id = 1;
+}
+
+message GetFlightResponse {
+    Flight flight = 1;
+}
+
+message ReserveSeatsRequest {
+    int64 flight_id = 1;
+    string booking_id = 2;
+    int32 seat_count = 3;
+}
+
+message ReserveSeatsResponse {
+    int64 reservation_id = 1;
+    string booking_id = 2;
+    ReservationStatus status = 3;
+}
+
+message ReleaseReservationRequest {
+    string booking_id = 1;
+}
+
+message ReleaseReservationResponse {
+    bool released = 1;
+}

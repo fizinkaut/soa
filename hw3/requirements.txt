@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+grpcio
+grpcio-tools
+protobuf
+psycopg[binary]
+sqlalchemy
+alembic
+redis>=5,<7

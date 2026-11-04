@@ -1,0 +1,84 @@
+services:
+  flight-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: flight_db
+      POSTGRES_USER: flight_user
+      POSTGRES_PASSWORD: flight_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - flight_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flight_user -d flight_db"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  booking-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: booking_db
+      POSTGRES_USER: booking_user
+      POSTGRES_PASSWORD: booking_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - booking_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking_user -d booking_db"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  flight-service:
+    build: .
+    dns_opt:
+      - timeout:1
+      - attempts:1
+    environment:
+      DATABASE_URL: postgresql://flight_user:flight_password@flight-db:5432/flight_db
+      GRPC_API_KEY: ${GRPC_API_KEY:-local-study-key}
+      REDIS_URL: redis://redis:6379/0
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
+      SEED_DEMO_FLIGHTS: ${SEED_DEMO_FLIGHTS:-true}
+    ports:
+      - "50051:50051"
+    depends_on:
+      flight-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "alembic -c flight_service/alembic.ini upgrade head &&
+      python -m flight_service.seed &&
+      exec python -m flight_service.main"
+
+  booking-service:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://booking_user:booking_password@booking-db:5432/booking_db
+      FLIGHT_ADDRESS: flight-service:50051
+      GRPC_API_KEY: ${GRPC_API_KEY:-local-study-key}
+    ports:
+      - "8000:8000"
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      flight-service:
+        condition: service_started
+    command: >
+      sh -c "alembic -c booking_service/alembic.ini upgrade head &&
+      exec uvicorn booking_service.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  flight_data:
+  booking_data:
